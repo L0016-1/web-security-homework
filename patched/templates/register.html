@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}注册 — SecureUser{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2 class="card-title">📝 用户注册</h2>
+
+  <form method="POST" action="{{ url_for('register') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="form-group">
+      {{ form.username.label }}
+      {{ form.username(class="form-input", placeholder="3~20位字母数字下划线") }}
+      {% for error in form.username.errors %}
+        <ul class="form-errors"><li>{{ error }}</li></ul>
+      {% endfor %}
+    </div>
+
+    <div class="form-group">
+      {{ form.email.label }}
+      {{ form.email(class="form-input", placeholder="your@email.com") }}
+      {% for error in form.email.errors %}
+        <ul class="form-errors"><li>{{ error }}</li></ul>
+      {% endfor %}
+    </div>
+
+    <div class="form-group">
+      {{ form.password.label }}
+      {{ form.password(class="form-input", placeholder="至少8位") }}
+      {% for error in form.password.errors %}
+        <ul class="form-errors"><li>{{ error }}</li></ul>
+      {% endfor %}
+    </div>
+
+    <div class="form-group">
+      {{ form.confirm.label }}
+      {{ form.confirm(class="form-input", placeholder="再次输入密码") }}
+      {% for error in form.confirm.errors %}
+        <ul class="form-errors"><li>{{ error }}</li></ul>
+      {% endfor %}
+    </div>
+
+    <div class="password-rules">
+      <p>📋 密码要求</p>
+      <ul>
+        <li>长度 8~64 位</li>
+        <li>至少包含 1 个大写字母</li>
+        <li>至少包含 1 个小写字母</li>
+        <li>至少包含 1 个数字</li>
+        <li>至少包含 1 个特殊字符 (!@#$%^&*()-_=+)</li>
+      </ul>
+    </div>
+
+    {{ form.submit(class="btn btn-primary") }}
+  </form>
+
+  <p class="form-footer">已有账号？<a href="{{ url_for('login') }}">返回登录</a></p>
+</div>
+{% endblock %}

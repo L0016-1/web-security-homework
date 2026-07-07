@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}登录 — SecureUser{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2 class="card-title">🔐 用户登录</h2>
+
+  {% if locked %}
+    <div class="security-badge">⚠️ 该 IP 已被临时锁定</div>
+  {% else %}
+    <div class="security-badge">🛡️ 本系统受 15 项安全防护保护</div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('login') }}">
+    {{ form.hidden_tag() }}
+
+    <div class="form-group">
+      {{ form.username.label }}
+      {{ form.username(class="form-input", placeholder="3~20位字母数字下划线") }}
+      {% for error in form.username.errors %}
+        <ul class="form-errors"><li>{{ error }}</li></ul>
+      {% endfor %}
+    </div>
+
+    <div class="form-group">
+      {{ form.password.label }}
+      {{ form.password(class="form-input", placeholder="请输入密码") }}
+      {% for error in form.password.errors %}
+        <ul class="form-errors"><li>{{ error }}</li></ul>
+      {% endfor %}
+    </div>
+
+    {% if captcha %}
+    <div class="form-group">
+      <label>验证码</label>
+      <div class="captcha-group">
+        <div class="captcha-row">
+          <span class="captcha-display">{{ captcha }}</span>
+          {{ form.captcha(class="form-input captcha-input", placeholder="输入上方字符", autocomplete="off", maxlength="5") }}
+        </div>
+        <p class="captcha-hint">请输入上方验证码（不区分大小写，忽略间隔符号）</p>
+      </div>
+      {% for error in form.captcha.errors %}
+        <ul class="form-errors"><li>{{ error }}</li></ul>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {{ form.submit(class="btn btn-primary") }}
+  </form>
+
+  <div class="login-note">
+    <p>🔒 安全措施</p>
+    <ul>
+      <li>登录限流：5 次/分钟</li>
+      <li>IP 锁定：5 次失败后锁定 15 分钟</li>
+      <li>验证码：防自动化攻击</li>
+      <li>密码：bcrypt 加盐哈希存储</li>
+    </ul>
+  </div>
+
+  <p class="form-footer">没有账号？<a href="{{ url_for('register') }}">立即注册</a></p>
+</div>
+{% endblock %}

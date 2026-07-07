@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}登录历史 — SecureUser{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2 class="card-title">📋 登录历史（最近 20 条）</h2>
+
+  {% if records %}
+  <table class="history-table">
+    <thead>
+      <tr>
+        <th>时间</th>
+        <th>IP 地址</th>
+        <th>结果</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr class="{{ 'success' if r.success else 'failed' }}">
+        <td>{{ r.time }}</td>
+        <td>{{ r.ip }}</td>
+        <td>
+          {% if r.success %}
+            <span class="badge badge-success">✓ 成功</span>
+          {% else %}
+            <span class="badge badge-failed">✗ 失败</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">暂无登录记录</p>
+  {% endif %}
+
+  <div class="btn-group">
+    <a href="{{ url_for('index') }}" class="btn btn-outline">返回首页</a>
+  </div>
+</div>
+{% endblock %}

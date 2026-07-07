@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}错误 {{ code }} — SecureUser{% endblock %}
+
+{% block content %}
+<div class="card error-card">
+  <div class="error-code">{{ code }}</div>
+  <p class="error-message">{{ message }}</p>
+  <div class="btn-group">
+    <a href="{{ url_for('index') }}" class="btn btn-primary">返回首页</a>
+  </div>
+</div>
+{% endblock %}
