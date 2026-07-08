@@ -25,7 +25,7 @@
 
 ## 1. 审计概述
 
-本报告针对一个 Flask 用户管理系统进行安全审计。该系统在**修复前**存在多处安全漏洞，涵盖密码存储、会话管理、输入校验、配置安全等多个维度。经过系统性修复，共修补 **15 项安全漏洞**，覆盖了从严重到低危的各个等级。
+本报告针对一个 Flask 用户管理系统进行安全审计。该系统在**修复前**存在多处安全漏洞，涵盖密码存储、会话管理、输入校验、配置安全、SQL 注入等多个维度。经过系统性修复，共修补 **20 项安全漏洞**，覆盖了从严重到低危的各个等级。
 
 **审计范围**：
 - 应用源代码（`app.py`）
@@ -54,6 +54,11 @@
 | V-13 | **无密码修改功能** | 🟢 低危 | 用户无法自助修改密码 |
 | V-14 | **缺少安全响应头** | 🟢 低危 | 未设置 X-Frame-Options 等安全头 |
 | V-15 | **内存字典存储用户** | 🟢 低危 | 用户数据存内存，重启丢失 |
+| V-16 | **SQL 注入（注册接口）** | 🔴 严重 | `/register` 用 f-string 拼接 SQL，可注入任意数据或执行危险操作 |
+| V-17 | **SQL 注入（搜索接口）** | 🔴 严重 | `/search` 用 f-string 拼接 SQL，可 UNION 注入窃取全库数据 |
+| V-18 | **搜索接口越权访问** | 🟠 高危 | `/search` 未检查登录状态，未登录可直接搜索用户数据 |
+| V-19 | **注册无密码复杂度校验** | 🟡 中危 | 注册接受任意弱密码（如 `1`），无长度/复杂度要求 |
+| V-20 | **注册/搜索无输入校验** | 🟡 中危 | 用户名/邮箱/手机号均无格式校验和字符白名单 |
 
 ---
 
@@ -490,7 +495,147 @@ def get_db():
 
 ---
 
-## 7. 修复方案对照表
+## 6.5 新增漏洞详解（V2 版本代码新增）
+
+> 以下漏洞为原始代码第二版（新增注册/搜索功能后）引入的安全问题。
+
+### V-16：SQL 注入（注册接口）🔴
+
+**位置**：`app.py` — `/register` 路由
+
+**问题代码**：
+```python
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        email = request.form.get("email", "")
+        phone = request.form.get("phone", "")
+        # ↓ f-string 直接拼接 SQL，典型注入漏洞
+        sql = f"INSERT INTO users (username, password, email, phone) VALUES ('{username}', '{password}', '{email}', '{phone}')"
+        c.execute(sql)
+```
+
+**风险分析**：
+- 攻击者可通过注册表单注入任意 SQL 语句
+- 可删除整张用户表、插入管理员账户、或利用 SQLite 的 ATTACH 读取其他数据库文件
+
+**利用方式**：
+```
+# 注册表单用户名填入：
+admin', 'hacked', 'a@b.com', '123'); DROP TABLE users; --
+
+# 拼接后的 SQL：
+INSERT INTO users (username, password, email, phone)
+VALUES ('admin', 'hacked', 'a@b.com', '123'); DROP TABLE users; --', ...)
+```
+
+**修复方案**：使用参数化查询（`?` 占位符）。
+```python
+c.execute(
+    "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)",
+    (username, password, email, phone)
+)
+```
+
+---
+
+### V-17：SQL 注入（搜索接口）🔴
+
+**位置**：`app.py` — `/search` 路由
+
+**问题代码**：
+```python
+@app.route("/search")
+def search():
+    keyword = request.args.get("keyword", "")
+    # ↓ f-string 拼接，且 keyword 来自用户输入
+    sql = f"SELECT id, username, email, phone FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
+    c.execute(sql)
+```
+
+**风险分析**：
+- 比 V-16 更危险——搜索接口直接返回查询结果，攻击者可通过 UNION 注入逐条读取所有用户数据
+- 即使密码不在查询字段中，也可通过 UNION 获取 `password` 列
+
+**利用方式**：
+```
+# 搜索框输入：
+' UNION SELECT id, username, password, phone FROM users --
+
+# 拼接后的 SQL：
+SELECT id, username, email, phone FROM users
+WHERE username LIKE '%' UNION SELECT id, username, password, phone FROM users --%'
+```
+
+**修复方案**：
+```python
+c.execute(
+    "SELECT id, username, email, phone FROM users WHERE username LIKE ? OR email LIKE ?",
+    (f"%{keyword}%", f"%{keyword}%")
+)
+```
+
+---
+
+### V-18：搜索接口越权访问 🟠
+
+**位置**：`app.py` — `/search` 路由
+
+**问题代码**：
+```python
+@app.route("/search")
+def search():
+    keyword = request.args.get("keyword", "")
+    # ↓ 没有检查 session["username"] 是否存在
+    # 即使未登录，只要带 keyword 参数就会执行搜索
+    if keyword:
+        c.execute(sql)
+```
+
+**风险分析**：
+- `/search` 路由没有登录验证，任何人无需登录即可搜索并获取所有用户信息
+- 虽然 `index.html` 只在登录后才显示搜索框，但直接访问 `/search?keyword=admin` 可绕过前端限制
+
+**修复方案**：添加 `login_required` 装饰器或登录检查。
+```python
+@app.route("/search")
+@login_required
+def search():
+    ...
+```
+
+---
+
+### V-19：注册无密码复杂度校验 🟡
+
+**位置**：`app.py` — `/register` 路由
+
+**问题代码**：
+```python
+password = request.form.get("password", "")
+# 无任何校验，直接存入数据库
+c.execute(sql)  # 密码 "1" 也能注册成功
+```
+
+**修复方案**：使用正则校验密码复杂度。
+```python
+import re
+if not re.match(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%]).{8,64}$", password):
+    error = "密码必须8位以上，含大小写字母、数字和特殊字符"
+```
+
+---
+
+### V-20：注册/搜索无输入校验 🟡
+
+**位置**：`app.py` — `/register` 和 `/search` 路由
+
+**问题**：`username`、`email`、`phone` 均无格式校验和长度限制，可注入超长字符串、特殊字符、控制字符。
+
+**修复方案**：使用 WTForms 正则白名单 + 长度限制。
+
 
 | 编号 | 漏洞 | 等级 | 修复措施 | 状态 |
 |------|------|------|---------|------|
@@ -509,6 +654,11 @@ def get_db():
 | V-13 | 无密码修改 | 🟢低危 | 新增 `/change_password` 路由 | ✅ |
 | V-14 | 缺安全头 | 🟢低危 | `after_request` 设置安全头 | ✅ |
 | V-15 | 内存存储 | 🟢低危 | SQLite 数据库 | ✅ |
+| V-16 | SQL 注入（注册） | 🔴严重 | 参数化查询 `?` 占位符 | ✅ |
+| V-17 | SQL 注入（搜索） | 🔴严重 | 参数化查询 `?` 占位符 | ✅ |
+| V-18 | 搜索越权访问 | 🟠高危 | `login_required` 装饰器 | ✅ |
+| V-19 | 注册无密码校验 | 🟡中危 | 正则复杂度校验 | ✅ |
+| V-20 | 注册无输入校验 | 🟡中危 | WTForms 正则白名单 | ✅ |
 
 ---
 
@@ -525,6 +675,9 @@ def get_db():
 | V-10 | **A07:2021 — 身份认证失效** | Session 固定攻击 |
 | V-11, V-12 | **A09:2021 — 安全日志与监控失效** | 无审计日志、错误消息泄露 |
 | V-15 | **A04:2021 — 不安全的设计** | 内存存储，无持久化 |
+| V-16, V-17 | **A03:2021 — 注入** | SQL 注入（f-string 拼接） |
+| V-18 | **A01:2021 — 失效的访问控制** | 搜索接口未鉴权 |
+| V-19, V-20 | **A07:2021 — 身份认证失效 / A03:2021 — 注入** | 无密码复杂度校验、无输入校验 |
 
 ---
 
@@ -577,6 +730,9 @@ def get_db():
 | 审计日志 | 执行登录/登出操作后查看 `audit.log` | 应包含对应事件记录 |
 | 安全头 | 检查 HTTP 响应头 | 包含 X-Frame-Options 等 |
 | Session 过期 | 登录后等待30分钟 | Session 自动过期，需重新登录 |
+| SQL 注入（注册） | 注册用户名填 `test', 'pw', 'a@b', '1'); DROP TABLE users; --` | 注册失败，数据库不受影响 |
+| SQL 注入（搜索） | 搜索框填 `' UNION SELECT id,username,password,phone FROM users --` | 返回空结果，不泄露密码 |
+| 搜索越权 | 未登录直接访问 `/search?keyword=admin` | 重定向到登录页 |
 
 ---
 
