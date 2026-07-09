@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}上传头像 — SecureUser{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>📸 上传头像</h2>
+
+  <div class="security-badge">🛡️ 仅允许 JPG/PNG/GIF/WEBP，文件名自动重命名，防止路径穿越</div>
+
+  {% if file_url %}
+  <div class="upload-success">
+    <p>✅ 上传成功！文件名：{{ filename }}</p>
+    <div class="upload-preview">
+      <img src="{{ file_url }}" alt="头像预览" class="avatar-preview">
+      <p>文件链接：<a href="{{ file_url }}" target="_blank">{{ file_url }}</a></p>
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+      <label for="avatar">选择头像图片</label>
+      <input type="file" id="avatar" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp" required>
+      <small>支持 JPG / PNG / GIF / WEBP，最大 16MB</small>
+    </div>
+    <button type="submit" class="btn btn-primary btn-full">上传</button>
+  </form>
+</div>
+{% endblock %}

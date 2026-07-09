@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 安全用户管理系统 — 综合安全加固版
-Flask Web 应用，整合 15 项安全防护措施。
+Flask Web 应用，整合 16 项安全防护措施。
 
 安全特性：
   1.  bcrypt 加盐密码哈希（rounds=12）
@@ -20,11 +20,14 @@ Flask Web 应用，整合 15 项安全防护措施。
   13. 密码修改功能（含复杂度校验）
   14. HTTP 安全响应头
   15. SQLite 数据库存储（替代内存字典）
+  16. 安全文件上传（后缀白名单 + MIME 检查 + UUID 重命名 + 路径穿越防护）
+      参考：ChenMishi/claude-web-ui server/routes/fs.js
 """
 
 import os
 import re
 import time
+import uuid
 import secrets
 import sqlite3
 import logging
@@ -49,6 +52,7 @@ from wtforms.validators import (
     DataRequired, Length, Regexp, EqualTo, Email
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.utils import secure_filename
 
 # ============================================================
 #  应用初始化 & 安全配置
@@ -89,6 +93,13 @@ limiter = Limiter(
 
 # 代理修复：获取真实客户端 IP（反向代理场景）
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+
+# [安全-16] 文件上传安全配置（参考 claude-web-ui server/routes/fs.js）
+UPLOAD_DIR = os.path.join(BASE_DIR, "static", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB 限制
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+ALLOWED_MIMES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 # ============================================================
 #  审计日志系统
@@ -557,6 +568,59 @@ def logout():
     logger.info(f"[LOGOUT] 用户='{username}' 登出 IP={request.remote_addr}")
     flash("已安全退出", "info")
     return redirect(url_for("login"))
+
+
+# ============================================================
+#  路由：头像上传（安全版 — 参考 claude-web-ui fs.js）
+# ============================================================
+
+@app.route("/upload", methods=["GET", "POST"])
+@login_required
+@limiter.limit("10 per minute")
+def upload():
+    """安全的头像上传：类型检查 + 文件名清理 + UUID 重命名"""
+    if request.method == "POST":
+        file = request.files.get("avatar")
+        if not file or file.filename == "":
+            flash("请选择要上传的文件", "error")
+            return redirect(url_for("upload"))
+
+        filename = file.filename
+
+        # [安全-16a] 文件后缀白名单检查
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            flash(f"不支持的文件类型: {ext}，仅允许 {', '.join(ALLOWED_EXTENSIONS)}", "error")
+            logger.warning(f"[UPLOAD_REJECT] 用户='{session['username']}' 文件={filename} 原因=后缀不允许")
+            return redirect(url_for("upload"))
+
+        # [安全-16b] MIME 类型检查
+        mime = file.content_type or ""
+        if mime not in ALLOWED_MIMES:
+            flash(f"不支持的文件类型（MIME: {mime}）", "error")
+            logger.warning(f"[UPLOAD_REJECT] 用户='{session['username']}' 文件={filename} 原因=MIME不允许")
+            return redirect(url_for("upload"))
+
+        # [安全-16c] 文件名清理 + UUID 重命名
+        # 参考 claude-web-ui: baseName.replace(/[\/\\\x00-\x1f\x7f]/g, '_') + 时间戳
+        safe_base = secure_filename(os.path.splitext(filename)[0]) or "avatar"
+        safe_name = f"{session['username']}_{uuid.uuid4().hex[:8]}{ext}"
+        filepath = os.path.join(UPLOAD_DIR, safe_name)
+
+        # [安全-16d] 防止路径穿越：确保最终路径在 UPLOAD_DIR 内
+        if not os.path.abspath(filepath).startswith(os.path.abspath(UPLOAD_DIR)):
+            flash("文件路径异常", "error")
+            logger.warning(f"[UPLOAD_REJECT] 用户='{session['username']}' 路径穿越尝试: {filename}")
+            return redirect(url_for("upload"))
+
+        file.save(filepath)
+        file_url = url_for("static", filename=f"uploads/{safe_name}")
+
+        logger.info(f"[UPLOAD_OK] 用户='{session['username']}' 原文件={filename} → 保存为={safe_name} IP={request.remote_addr}")
+        flash("头像上传成功", "success")
+        return render_template("upload.html", file_url=file_url, filename=safe_name)
+
+    return render_template("upload.html")
 
 
 # ============================================================

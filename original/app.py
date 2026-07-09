@@ -1,8 +1,12 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, send_from_directory, url_for
 import sqlite3, os, sys
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025"
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
+
+UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 USERS = {
     "admin": {
@@ -117,6 +121,26 @@ def search():
         for row in rows:
             results.append({"id": row[0], "username": row[1], "email": row[2], "phone": row[3]})
     return render_template("index.html", user=user, search_keyword=keyword, search_results=results)
+
+
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    username = session.get("username")
+    if not username:
+        return redirect("/login")
+    user = USERS.get(username)
+
+    if request.method == "POST":
+        file = request.files.get("avatar")
+        if not file or file.filename == "":
+            return render_template("upload.html", user=user, error="请选择要上传的文件")
+        filename = file.filename
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        file.save(filepath)
+        file_url = "/static/uploads/" + filename
+        return render_template("upload.html", user=user, file_url=file_url, filename=filename)
+
+    return render_template("upload.html", user=user)
 
 
 if __name__ == "__main__":

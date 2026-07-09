@@ -270,3 +270,60 @@ body {
     padding: 24px;
     font-size: 14px;
 }
+
+/* 上传区域样式 */
+.upload-form {
+    margin-top: 8px;
+}
+
+.upload-form input[type="file"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: #fafafa;
+    cursor: pointer;
+}
+
+.upload-form input[type="file"]:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    outline: none;
+}
+
+.upload-preview {
+    margin: 20px 0;
+    padding: 16px;
+    background-color: #f8f9ff;
+    border-radius: 8px;
+    border: 1px solid #e0e0f0;
+}
+
+.upload-preview h3 {
+    margin-bottom: 12px;
+}
+
+.avatar-preview {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 8px;
+    border: 2px solid #ddd;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.upload-preview p {
+    font-size: 14px;
+    color: #555;
+    word-break: break-all;
+}
+
+.upload-preview p a {
+    color: #667eea;
+    text-decoration: none;
+}
+
+.upload-preview p a:hover {
+    text-decoration: underline;
+}

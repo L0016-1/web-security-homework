@@ -522,3 +522,47 @@ body {
   border-top: 1px solid #e2e8f0;
   margin-top: auto;
 }
+
+/* ===== 上传页面 ===== */
+.upload-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.upload-success p {
+  color: #15803d;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.upload-preview {
+  text-align: center;
+}
+
+.avatar-preview {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  border: 2px solid #e2e8f0;
+  margin-bottom: 12px;
+}
+
+.upload-preview p a {
+  color: #6366f1;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.upload-preview p a:hover {
+  text-decoration: underline;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}

