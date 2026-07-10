@@ -327,3 +327,23 @@ body {
 .upload-preview p a:hover {
     text-decoration: underline;
 }
+
+/* 充值表单样式 */
+.recharge-form {
+    margin-top: 8px;
+}
+
+.recharge-form input[type="number"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.recharge-form input[type="number"]:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}

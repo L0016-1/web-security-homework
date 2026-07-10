@@ -38,11 +38,12 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             email TEXT,
-            phone TEXT
+            phone TEXT,
+            balance REAL DEFAULT 0
         )
     """)
-    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES ('admin', 'admin123', 'admin@example.com', '13800138000')")
-    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone) VALUES ('alice', 'alice2025', 'alice@example.com', '13900139001')")
+    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone, balance) VALUES ('admin', 'admin123', 'admin@example.com', '13800138000', 99999)")
+    c.execute("INSERT OR IGNORE INTO users (username, password, email, phone, balance) VALUES ('alice', 'alice2025', 'alice@example.com', '13900139001', 100)")
     conn.commit()
     conn.close()
 
@@ -141,6 +142,38 @@ def upload():
         return render_template("upload.html", user=user, file_url=file_url, filename=filename)
 
     return render_template("upload.html", user=user)
+
+
+@app.route("/profile")
+def profile():
+    user_id = request.args.get("user_id", "")
+    profile_data = None
+    if user_id:
+        conn = sqlite3.connect("data/users.db")
+        c = conn.cursor()
+        sql = f"SELECT id, username, email, phone, balance FROM users WHERE id = {user_id}"
+        print(f"[SQL] {sql}", flush=True)
+        c.execute(sql)
+        row = c.fetchone()
+        conn.close()
+        if row:
+            profile_data = {"id": row[0], "username": row[1], "email": row[2], "phone": row[3], "balance": row[4]}
+    return render_template("profile.html", profile_data=profile_data)
+
+
+@app.route("/recharge", methods=["POST"])
+def recharge():
+    user_id = request.form.get("user_id", "")
+    amount = request.form.get("amount", "0")
+    if user_id:
+        conn = sqlite3.connect("data/users.db")
+        c = conn.cursor()
+        sql = f"UPDATE users SET balance = balance + {amount} WHERE id = {user_id}"
+        print(f"[SQL] {sql}", flush=True)
+        c.execute(sql)
+        conn.commit()
+        conn.close()
+    return redirect(f"/profile?user_id={user_id}")
 
 
 if __name__ == "__main__":
