@@ -176,6 +176,30 @@ def recharge():
     return redirect(f"/profile?user_id={user_id}")
 
 
+@app.route("/page")
+def page():
+    name = request.args.get("name", "")
+    page_content = None
+    if name:
+        filepath = os.path.join("pages", name)
+        if os.path.isfile(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                page_content = f.read()
+        else:
+            filepath_html = os.path.join("pages", name + ".html")
+            if os.path.isfile(filepath_html):
+                with open(filepath_html, "r", encoding="utf-8") as f:
+                    page_content = f.read()
+            else:
+                page_content = "页面不存在"
+
+    username = session.get("username")
+    user = None
+    if username and username in USERS:
+        user = USERS[username]
+    return render_template("index.html", user=user, page_content=page_content)
+
+
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)

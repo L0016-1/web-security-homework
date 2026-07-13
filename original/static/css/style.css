@@ -347,3 +347,29 @@ body {
     border-color: #667eea;
     box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
+
+/* 动态页面内容样式 */
+.page-content {
+    padding: 16px;
+    background-color: #f8f9ff;
+    border-radius: 8px;
+    border: 1px solid #e0e0f0;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #333;
+}
+
+.page-content h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.page-content ul {
+    padding-left: 20px;
+    margin: 12px 0;
+}
+
+.page-content li {
+    margin-bottom: 8px;
+}
