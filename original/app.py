@@ -176,6 +176,24 @@ def recharge():
     return redirect(f"/profile?user_id={user_id}")
 
 
+@app.route("/change-password", methods=["POST"])
+def change_password():
+    username = request.form.get("username", "")
+    new_password = request.form.get("new_password", "")
+    if username and new_password:
+        conn = sqlite3.connect("data/users.db")
+        c = conn.cursor()
+        sql = f"UPDATE users SET password = '{new_password}' WHERE username = '{username}'"
+        print(f"[SQL] {sql}", flush=True)
+        c.execute(sql)
+        conn.commit()
+        conn.close()
+        # 同步更新内存中的密码
+        if username in USERS:
+            USERS[username]["password"] = new_password
+    return redirect("/profile")
+
+
 @app.route("/page")
 def page():
     name = request.args.get("name", "")
