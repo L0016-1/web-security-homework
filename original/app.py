@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, session, send_from_directory, url_for
-import sqlite3, os, sys
+import sqlite3, os, sys, urllib.request, urllib.error
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025"
@@ -192,6 +192,33 @@ def change_password():
         if username in USERS:
             USERS[username]["password"] = new_password
     return redirect("/profile")
+
+
+@app.route("/fetch-url", methods=["POST"])
+def fetch_url():
+    username = session.get("username")
+    if not username:
+        return redirect("/login")
+    user = USERS.get(username)
+
+    url = request.form.get("url", "")
+    fetch_status = None
+    fetch_content = None
+
+    if url:
+        try:
+            resp = urllib.request.urlopen(url, timeout=10)
+            fetch_status = resp.getcode()
+            content = resp.read().decode("utf-8", errors="replace")
+            fetch_content = content[:5000]
+        except urllib.error.HTTPError as e:
+            fetch_status = e.code
+            fetch_content = str(e)
+        except Exception as e:
+            fetch_status = "错误"
+            fetch_content = str(e)
+
+    return render_template("index.html", user=user, fetch_status=fetch_status, fetch_content=fetch_content)
 
 
 @app.route("/page")

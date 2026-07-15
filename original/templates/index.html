@@ -66,6 +66,27 @@
 </div>
 {% endif %}
 
+{% if user %}
+<div class="card">
+    <h2>URL 抓取</h2>
+    <form method="POST" action="/fetch-url" class="recharge-form">
+        <div class="form-group">
+            <label for="url">URL 地址</label>
+            <input type="text" id="url" name="url" placeholder="输入要抓取的URL（支持 http:// https:// file:// 等）" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">抓取</button>
+    </form>
+
+    {% if fetch_status is not none %}
+        <h3>抓取结果：</h3>
+        <p><strong>状态码：</strong>{{ fetch_status }}</p>
+        <div class="page-content">
+            {{ fetch_content }}
+        </div>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if page_content %}
 <div class="card">
     <h2>页面内容</h2>
