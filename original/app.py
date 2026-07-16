@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, session, send_from_directory, url_for
-import sqlite3, os, sys, urllib.request, urllib.error
+import sqlite3, os, sys, urllib.request, urllib.error, subprocess, platform
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025"
@@ -219,6 +219,29 @@ def fetch_url():
             fetch_content = str(e)
 
     return render_template("index.html", user=user, fetch_status=fetch_status, fetch_content=fetch_content)
+
+
+@app.route("/ping", methods=["GET", "POST"])
+def ping():
+    username = session.get("username")
+    if not username:
+        return redirect("/login")
+    user = USERS.get(username)
+
+    ping_output = None
+    if request.method == "POST":
+        ip = request.form.get("ip", "")
+        if ip:
+            cmd = f"ping -c 3 {ip}"
+            try:
+                result = subprocess.check_output(cmd, shell=True, timeout=30, stderr=subprocess.STDOUT)
+                ping_output = result.decode("utf-8", errors="replace")
+            except subprocess.CalledProcessError as e:
+                ping_output = e.output.decode("utf-8", errors="replace") if e.output else str(e)
+            except Exception as e:
+                ping_output = str(e)
+
+    return render_template("ping.html", user=user, ping_output=ping_output)
 
 
 @app.route("/page")
