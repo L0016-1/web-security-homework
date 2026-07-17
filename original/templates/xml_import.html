@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+    <h2>XML 数据导入</h2>
+    <form method="POST" action="/xml-import" class="recharge-form">
+        <div class="form-group">
+            <label for="xml_data">XML 数据</label>
+            <textarea id="xml_data" name="xml_data" rows="10" placeholder="请输入 XML 数据（支持 ENTITY 定义）" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">导入</button>
+    </form>
+
+    {% if import_result is not none %}
+        <h3>解析结果：</h3>
+        <div class="ping-output">
+<pre>{{ import_result }}</pre>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, session, send_from_directory, url_for
-import sqlite3, os, sys, urllib.request, urllib.error, subprocess, platform
+import sqlite3, os, sys, urllib.request, urllib.error, subprocess, platform, re, json
 
 app = Flask(__name__)
 app.secret_key = "dev-key-2025"
@@ -242,6 +242,45 @@ def ping():
                 ping_output = str(e)
 
     return render_template("ping.html", user=user, ping_output=ping_output)
+
+
+@app.route("/xml-import", methods=["GET", "POST"])
+def xml_import():
+    username = session.get("username")
+    if not username:
+        return redirect("/login")
+    user = USERS.get(username)
+
+    import_result = None
+    if request.method == "POST":
+        xml_data = request.form.get("xml_data", "")
+        try:
+            # 检测 XML 中的 <!ENTITY 定义，提取 SYSTEM 文件路径
+            entity_pattern = r'<!ENTITY\s+(\w+)\s+SYSTEM\s+"([^"]+)"'
+            entities = re.findall(entity_pattern, xml_data)
+            
+            # 读取实体引用的文件并替换
+            resolved_xml = xml_data
+            for entity_name, file_path in entities:
+                try:
+                    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                        file_content = f.read()
+                    # 替换 XML 中的实体引用 &entity_name; 为文件内容
+                    resolved_xml = resolved_xml.replace(f"&{entity_name};", file_content)
+                except Exception as e:
+                    import_result = json.dumps({"error": f"读取文件 {file_path} 失败: {str(e)}"}, ensure_ascii=False, indent=2)
+                    break
+            
+            if not import_result:
+                # 解析 XML 提取 user 节点
+                user_pattern = r'<user>\s*<name>([^<]+)</name>\s*<email>([^<]+)</email>\s*</user>'
+                user_matches = re.findall(user_pattern, resolved_xml)
+                users_list = [{"name": name, "email": email} for name, email in user_matches]
+                import_result = json.dumps({"users": users_list}, ensure_ascii=False, indent=2)
+        except Exception as e:
+            import_result = json.dumps({"error": str(e)}, ensure_ascii=False, indent=2)
+
+    return render_template("xml_import.html", user=user, import_result=import_result)
 
 
 @app.route("/page")
